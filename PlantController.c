@@ -1,3 +1,7 @@
+/*
+ * Program should take in the output, calcalute the difference between output and ideal, adjust the programs own output accordinly, repeat until difference is ~0 consistently
+ */
+
 #include <assert.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -11,7 +15,7 @@
 
 #define BASE 0x280
 
-int period =0;
+int period =1;
 int integral =0;
 int derivative = 0;
 /*
@@ -76,17 +80,23 @@ void convertDA(int16_t input){
 }
 
 int16_t compute(int16_t input){
-	uint16_t out;
-	out =(period+integral+derivative)*(input*input)-(period+2*derivative)*input+derivative;
-	out = out/((input-1)*input);
+	int16_t out;
+	if(input != 1 || input != 0){
+		out =(period+integral+derivative)*(input*input)-(period+2*derivative)*input+derivative;
+		out = out/((input-1)*input);
+	}
+	else
+	{
+		out = 0;
+	}
 	return out;
 }
 
 void performMath(){
-	uint16_t analog;
-	uint16 out;
+	int16_t analog;
+	int16_t out;
 	analog = convertAD();
-	out = compute());
+	out = compute(analog);
 	convertDA(out);
 }
 
@@ -109,6 +119,14 @@ int main(int argc, char *argv[]) {
 	struct sigevent event;
 	struct itimerspec timer;
 	timer_t timer_id;
+	int privity_err;
+
+	privity_err = ThreadCtl( _NTO_TCTL_IO, NULL );
+	if ( privity_err == -1 )
+	{
+		fprintf( stderr, "can't get root permissions\n" );
+		return -1;
+	}
 
 	/*Real Time Clock Setup*/
 	clkper.nsec = 1000000;
