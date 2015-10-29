@@ -1,5 +1,7 @@
 /*
- * Program should take in the output, calcalute the difference between output and ideal, adjust the programs own output accordinly, repeat until difference is ~0 consistently
+ * Program sets a desired output, then enters 0 volts into the plant, from there it checks plant output vs desired and calculates error, it then performs math as outlined in article, sets new input based on this math
+ * and gets resulting output, calculating error again, user should be able to set hard variables to control this better. Function works when it can reduce error. See articles by wescott
+ * Integral must take sum of previous errors and * coef, limiting itself to a max and min. Proportional is jsut an error * coef. Differential is current-previous position, * coef
  */
 
 #include <assert.h>
@@ -15,9 +17,32 @@
 
 #define BASE 0x280
 
-int period =1;
-int integral =0;
-int derivative = 0;
+struct control{
+	int16_t period;
+	int16_t integral;
+	int16_t derivative;
+	int16_t error;
+	int16_t iMax;
+	int16_t iMin;
+	int16_t iState;
+	int16_t goal;
+};
+
+struct control PID;
+
+void SetUp(){
+	PID.period = 1;
+	PID.integral = 1;
+	PID.derivative = 1;
+	PID.iState=0;
+	PID.iMin= -32768;
+	PID.iMax = 32767;
+	PID.goal=16384;
+	PID.error=0;
+
+}
+
+
 /*
  * InitializeAD
  * Initializes the A/D converter for use
@@ -79,25 +104,39 @@ void convertDA(int16_t input){
 
 }
 
-int16_t compute(int16_t input){
-	int16_t out;
-	if(input != 1 || input != 0){
-		out =(period+integral+derivative)*(input*input)-(period+2*derivative)*input+derivative;
-		out = out/((input-1)*input);
+int16_t compute(int16_t error){
+
+	int pTerm, iTerm, dTerm;
+	pTerm = PID.period * error;
+
+	PID.iState+=error;
+	if(PID.iState > PID.iMax){
+		PID.iState=PID.iMax;
 	}
-	else
-	{
-		out = 0;
+	if(PID.iState < PID.iMin){
+		PID.iState=PID.iMin;
 	}
-	return out;
+
+	iTerm= PID.integral * PID.iState;
+
+	dTerm = PID.derivative +(PID.error-error);
+	PID.error=error;
+
+	return pTerm+iTerm+dTerm;
+
 }
 
 void performMath(){
 	int16_t analog;
 	int16_t out;
+	int16_t error;
 	analog = convertAD();
-	out = compute(analog);
+	error = PID.goal - analog;
+	out = compute(error);
 	convertDA(out);
+	//printf("Analog: %d\n",analog);
+	//printf("Error: %d\n",error);
+	//printf("Out: %d\n",out);
 }
 
 void * userControl(void * args){
@@ -129,7 +168,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/*Real Time Clock Setup*/
-	clkper.nsec = 1000000;
+	clkper.nsec = 1000000000;
 	clkper.fract = 0;
 
 	ClockPeriod(CLOCK_REALTIME, &clkper, NULL, 0);
@@ -147,12 +186,12 @@ int main(int argc, char *argv[]) {
 	timer_create( CLOCK_REALTIME, &event, &timer_id );
 
 	timer.it_value.tv_sec = 0;
-	timer.it_value.tv_nsec = 1000000;
+	timer.it_value.tv_nsec = 1000000000;
 	timer.it_interval.tv_sec = 0;
-	timer.it_interval.tv_nsec = 1000000;
+	timer.it_interval.tv_nsec = 1000000000;
 
 	timer_settime( timer_id, 0, &timer, NULL );
-
+	SetUp();
 	InitializeAD();
 
 	while(1){
