@@ -14,6 +14,7 @@
 #include <hw/inout.h>
 #include <pthread.h>
 #include <time.h>
+#include <semaphore.h>
 
 #define BASE 0x280
 
@@ -29,6 +30,14 @@ struct control{
 };
 
 struct control PID;
+int16_t gIn;
+int16_t gOut;
+
+struct timespec tmMath;
+struct timespec tmWrite;
+
+sem_t smMath;
+sem_t smWrite;
 
 void SetUp(){
 	PID.period = 1;
@@ -39,6 +48,9 @@ void SetUp(){
 	PID.iMax = 32767;
 	PID.goal=16384;
 	PID.error=0;
+
+	sem_init(&smMath, 0, 0);
+	sem_init(&smWrite, 0, 0);
 
 }
 
@@ -122,7 +134,12 @@ int16_t compute(int16_t error){
 	dTerm = PID.derivative +(PID.error-error);
 	PID.error=error;
 
-	return pTerm+iTerm+dTerm;
+	if((pTerm+iTerm+dTerm) > 4095)
+		return 4095;
+	else if(pTerm+iTerm+dTerm < 0)
+		return 0;
+	else
+		return pTerm+iTerm+dTerm;
 
 }
 
@@ -139,6 +156,38 @@ void performMath(){
 	//printf("Out: %d\n",out);
 }
 
+void * readInThread(void * args){
+	int16_t tempIn;
+	while(1){ //main control flag to stop program, possibly
+		//setup timed wait here
+		tempIn=convertAD();
+		//set global in/out variables
+		//reset sem wait-time
+	}
+}
+
+void * mathThread(void * args){
+	int16_t tempOut;
+	int16_t tempIn;
+	int16_t error;
+	while(1){ //control flag
+		//use sem timed wait here
+		//tempOut=compute(gError);
+		//set tempOut as global
+		//reset sem timer
+
+	}
+}
+
+void * readOutThread(void * args){
+	int16_t tempOut;
+	while(1){
+		//semaphore here
+		//tempOut = gOut;
+		//convertDA(tempOut)
+		//reset sem timer
+	}
+}
 void * userControl(void * args){
 	printf("Enter Period \n");
 
@@ -168,7 +217,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	/*Real Time Clock Setup*/
-	clkper.nsec = 1000000000;
+	clkper.nsec = 10000000;
 	clkper.fract = 0;
 
 	ClockPeriod(CLOCK_REALTIME, &clkper, NULL, 0);
@@ -186,9 +235,9 @@ int main(int argc, char *argv[]) {
 	timer_create( CLOCK_REALTIME, &event, &timer_id );
 
 	timer.it_value.tv_sec = 0;
-	timer.it_value.tv_nsec = 1000000000;
+	timer.it_value.tv_nsec = 10000000;
 	timer.it_interval.tv_sec = 0;
-	timer.it_interval.tv_nsec = 1000000000;
+	timer.it_interval.tv_nsec = 10000000;
 
 	timer_settime( timer_id, 0, &timer, NULL );
 	SetUp();
