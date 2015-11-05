@@ -19,38 +19,38 @@
 #define BASE 0x280
 
 struct control{
-	int16_t period;
-	int16_t integral;
-	int16_t derivative;
-	int16_t error;
-	int16_t iMax;
-	int16_t iMin;
-	int16_t iState;
-	int16_t goal;
+	float period;
+	float integral;
+	float derivative;
+	float error;
+	float iMax;
+	float iMin;
+	float iState;
+	float goal;
 };
 
 struct control PID;
-int16_t gIn;
+/*int16_t gIn;
 int16_t gOut;
 
 struct timespec tmMath;
 struct timespec tmWrite;
 
 sem_t smMath;
-sem_t smWrite;
+sem_t smWrite;*/
 
 void SetUp(){
-	PID.period = 1;
-	PID.integral = 1;
-	PID.derivative = 1;
+	PID.period = 3.0;
+	PID.integral = 1.0;
+	PID.derivative = 1.0;
 	PID.iState=0;
-	PID.iMin= -32768;
-	PID.iMax = 32767;
-	PID.goal=16384;
-	PID.error=0;
+	PID.iMin= -500.0;
+	PID.iMax = 500.0;
+	PID.goal= 2.0;
+	PID.error=0.0;
 
-	sem_init(&smMath, 0, 0);
-	sem_init(&smWrite, 0, 0);
+	//sem_init(&smMath, 0, 0);
+	//sem_init(&smWrite, 0, 0);
 
 }
 
@@ -96,29 +96,34 @@ int16_t convertAD(){
 	}
 	LSB = in8(least_handle);
 	MSB = in8(most_handle);
+
 	return MSB*256+LSB;
 }
 
 void convertDA(int16_t input){
 	uintptr_t lsb_handle;
 	uintptr_t msb_handle;
+	uintptr_t busy_handle;
 	lsb_handle= mmap_device_io(1,BASE+6);
 	msb_handle =mmap_device_io(1,BASE+7);
-
+	busy_handle = mmap_device_io(1,BASE+3);
 
 
 	int8_t lsb = input&255;
 	int8_t msb=input/256; //add value to use channel other then 0
-	out8(lsb,lsb_handle);
-	out8(msb,msb_handle);
+	out8(lsb_handle,lsb);
+	out8(msb_handle,msb);
 
+	while(in8(busy_handle)&0x10){
+
+	}
 
 
 }
 
-int16_t compute(int16_t error){
+float compute(float error){
 
-	int pTerm, iTerm, dTerm;
+	float pTerm, iTerm, dTerm;
 	pTerm = PID.period * error;
 
 	PID.iState+=error;
@@ -134,29 +139,36 @@ int16_t compute(int16_t error){
 	dTerm = PID.derivative +(PID.error-error);
 	PID.error=error;
 
-	if((pTerm+iTerm+dTerm) > 4095)
-		return 4095;
-	else if(pTerm+iTerm+dTerm < 0)
-		return 0;
-	else
 		return pTerm+iTerm+dTerm;
 
 }
 
+
 void performMath(){
-	int16_t analog;
-	int16_t out;
-	int16_t error;
+	int16_t analog = 0;
+	uint16_t convertOut = 0;
+	float convertAnalog = 0;
+	float out = 0.0;
+	float error = 0.0;
+
 	analog = convertAD();
-	error = PID.goal - analog;
+	convertAnalog = ((float) analog)/32768 * 10;
+	error = PID.goal - convertAnalog;
 	out = compute(error);
-	convertDA(out);
+	convertOut = (int)(((out/20)*2048)+2048);
+
+	if(convertOut > 4095)
+		 convertOut = 4095;
+	else if(convertOut < 0)
+		convertOut = 0;
+
+	convertDA(convertOut);
 	//printf("Analog: %d\n",analog);
 	//printf("Error: %d\n",error);
 	//printf("Out: %d\n",out);
 }
 
-void * readInThread(void * args){
+/*void * readInThread(void * args){
 	int16_t tempIn;
 	while(1){ //main control flag to stop program, possibly
 		//setup timed wait here
@@ -164,9 +176,9 @@ void * readInThread(void * args){
 		//set global in/out variables
 		//reset sem wait-time
 	}
-}
+}*/
 
-void * mathThread(void * args){
+/*void * mathThread(void * args){
 	int16_t tempOut;
 	int16_t tempIn;
 	int16_t error;
@@ -177,9 +189,9 @@ void * mathThread(void * args){
 		//reset sem timer
 
 	}
-}
+}*/
 
-void * readOutThread(void * args){
+/*void * readOutThread(void * args){
 	int16_t tempOut;
 	while(1){
 		//semaphore here
@@ -187,7 +199,8 @@ void * readOutThread(void * args){
 		//convertDA(tempOut)
 		//reset sem timer
 	}
-}
+}*/
+
 void * userControl(void * args){
 	printf("Enter Period \n");
 
