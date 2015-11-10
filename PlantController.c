@@ -30,27 +30,21 @@ struct control{
 };
 
 struct control PID;
-/*int16_t gIn;
-int16_t gOut;
 
-struct timespec tmMath;
-struct timespec tmWrite;
-
-sem_t smMath;
-sem_t smWrite;*/
+pthread_mutex_t mutex;
+pthread_t uInput;
 
 void SetUp(){
-	PID.period = 3.0;
-	PID.integral = 1.0;
-	PID.derivative = 1.0;
+	PID.period = 1.0;
+	PID.integral = 0.10;
+	PID.derivative = 0.10;
 	PID.iState=0;
-	PID.iMin= -500.0;
-	PID.iMax = 500.0;
-	PID.goal= 2.0;
+	PID.iMin= -100.0;
+	PID.iMax = 100.0;
+	PID.goal= 5.0;
 	PID.error=0.0;
 
-	//sem_init(&smMath, 0, 0);
-	//sem_init(&smWrite, 0, 0);
+	pthread_mutex_init(&mutex, NULL);
 
 }
 
@@ -124,6 +118,8 @@ void convertDA(int16_t input){
 float compute(float error){
 
 	float pTerm, iTerm, dTerm;
+
+	pthread_mutex_lock(&mutex);
 	pTerm = PID.period * error;
 
 	PID.iState+=error;
@@ -138,6 +134,7 @@ float compute(float error){
 
 	dTerm = PID.derivative +(PID.error-error);
 	PID.error=error;
+	pthread_mutex_unlock(&mutex);
 
 		return pTerm+iTerm+dTerm;
 
@@ -153,7 +150,9 @@ void performMath(){
 
 	analog = convertAD();
 	convertAnalog = ((float) analog)/32768 * 10;
+	pthread_mutex_lock(&mutex);
 	error = PID.goal - convertAnalog;
+	pthread_mutex_unlock(&mutex);
 	out = compute(error);
 	convertOut = (int)(((out/20)*2048)+2048);
 
@@ -168,45 +167,28 @@ void performMath(){
 	//printf("Out: %d\n",out);
 }
 
-/*void * readInThread(void * args){
-	int16_t tempIn;
-	while(1){ //main control flag to stop program, possibly
-		//setup timed wait here
-		tempIn=convertAD();
-		//set global in/out variables
-		//reset sem wait-time
-	}
-}*/
-
-/*void * mathThread(void * args){
-	int16_t tempOut;
-	int16_t tempIn;
-	int16_t error;
-	while(1){ //control flag
-		//use sem timed wait here
-		//tempOut=compute(gError);
-		//set tempOut as global
-		//reset sem timer
-
-	}
-}*/
-
-/*void * readOutThread(void * args){
-	int16_t tempOut;
-	while(1){
-		//semaphore here
-		//tempOut = gOut;
-		//convertDA(tempOut)
-		//reset sem timer
-	}
-}*/
 
 void * userControl(void * args){
-	printf("Enter Period \n");
+	float per;
+	float inte;
+	float der;
 
-	printf("Enter Integral \n");
+	while(1){
+		printf("Enter Period \n");
+		scanf("%f",&per);
 
-	printf("Enter Derivative \n");
+		printf("Enter Integral \n");
+		scanf("%f",&inte);
+
+		printf("Enter Derivative \n");
+		scanf("%f", &der);
+
+		pthread_mutex_lock(&mutex);
+		PID.period = per;
+		PID.integral = inte;
+		PID.derivative = der;
+		pthread_mutex_unlock(&mutex);
+	}
 }
 
 int main(int argc, char *argv[]) {
@@ -221,6 +203,16 @@ int main(int argc, char *argv[]) {
 	struct itimerspec timer;
 	timer_t timer_id;
 	int privity_err;
+
+	pthread_attr_t threadAttributes;
+	struct sched_param parameters;
+	int policy;
+	pthread_attr_init(&threadAttributes);
+	pthread_getschedparam(pthread_self(),&policy, &parameters);
+
+	parameters.sched_priority--;
+	pthread_attr_setdetachstate(&threadAttributes, PTHREAD_CREATE_JOINABLE);
+	pthread_attr_setschedparam(&threadAttributes, &parameters);
 
 	privity_err = ThreadCtl( _NTO_TCTL_IO, NULL );
 	if ( privity_err == -1 )
@@ -255,6 +247,8 @@ int main(int argc, char *argv[]) {
 	timer_settime( timer_id, 0, &timer, NULL );
 	SetUp();
 	InitializeAD();
+
+	pthread_create(&uInput, &threadAttributes, &userControl, NULL);
 
 	while(1){
 		pid = MsgReceivePulse ( chid, &pulse, sizeof( pulse ), NULL );
