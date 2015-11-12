@@ -36,8 +36,8 @@ pthread_t uInput;
 
 void SetUp(){
 	PID.period = 1.0;
-	PID.integral = 0.10;
-	PID.derivative = 0.10;
+	PID.integral = 0.099;
+	PID.derivative = 0.095;
 	PID.iState=0;
 	PID.iMin= -100.0;
 	PID.iMax = 100.0;
@@ -174,6 +174,12 @@ void * userControl(void * args){
 	float der;
 
 	while(1){
+		pthread_mutex_lock(&mutex);
+		per = PID.period;
+		inte=PID.integral;
+		der=PID.derivative;
+		pthread_mutex_unlock(&mutex);
+		printf("Current Values- Period: %f, Integral %f, Derivative %f\n",per, inte, der);
 		printf("Enter Period \n");
 		scanf("%f",&per);
 
